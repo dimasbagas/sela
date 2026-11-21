@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
-import { httpJson, type NowPlaying } from "../lib/api";
+import { httpJson, nowPlaying, type NowPlaying } from "../lib/api";
 import type { LyricQuery } from "../App";
+import {
+  activeLineIndex,
+  litWordCount,
+  parseSynced,
+  type LyricLine,
+} from "../lib/karaoke";
+import { openKaraokeWindow } from "../lib/windows";
 
 interface LrclibTrack {
   id: number;
@@ -25,6 +32,39 @@ export default function Lirik({
   const [selected, setSelected] = useState<LrclibTrack | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const [karaoke, setKaraoke] = useState(false);
+  const [pos, setPos] = useState(0);
+  const [winErr, setWinErr] = useState("");
+
+  // Posisi lagu untuk mode karaoke (poll tiap detik saat aktif).
+  useEffect(() => {
+    if (!karaoke) return;
+    let stop = false;
+    const t = setInterval(async () => {
+      const n = await nowPlaying();
+      if (!stop && n?.position_secs !== undefined && n.position_secs !== null) {
+        setPos(n.position_secs);
+      }
+    }, 1000);
+    return () => {
+      stop = true;
+      clearInterval(t);
+    };
+  }, [karaoke]);
+
+  const syncedLines: LyricLine[] = selected
+    ? parseSynced(selected.syncedLyrics)
+    : [];
+  const activeIdx = activeLineIndex(syncedLines, pos);
+  const lit = litWordCount(syncedLines, activeIdx, pos);
+
+  async function openKaraoke() {
+    if (!selected) return;
+    const ok = await openKaraokeWindow(selected.trackName, selected.artistName);
+    if (ok !== true) {
+      setWinErr(`Jendela karaoke gagal dibuka: ${ok}`);
+    }
+  }
 
   async function search(t = track, a = artist) {
     const tr = t.trim();
@@ -142,12 +182,56 @@ export default function Lirik({
 
       {selected && (
         <div style={{ marginTop: 12 }}>
-          <div className="card-title">{selected.trackName}</div>
-          <div className="list-sub" style={{ marginBottom: 8 }}>
-            {selected.artistName}
-            {selected.albumName ? ` · ${selected.albumName}` : ""}
+          <div className="row" style={{ marginBottom: 8 }}>
+            <div className="grow">
+              <div className="card-title">{selected.trackName}</div>
+              <div className="list-sub">
+                {selected.artistName}
+                {selected.albumName ? ` · ${selected.albumName}` : ""}
+              </div>
+            </div>
+            <button
+              className={karaoke ? "btn-ghost active" : "btn-ghost btn-mini"}
+              onClick={() => setKaraoke(!karaoke)}
+              disabled={syncedLines.length === 0}
+            >
+              {karaoke ? "Tutup karaoke" : "Mode karaoke"}
+            </button>
+            <button className="btn-ghost btn-mini" onClick={() => void openKaraoke()}>
+              Jendela karaoke
+            </button>
           </div>
-          <div className="lyrics">{lyricText(selected)}</div>
+          {winErr && <div className="err">{winErr}</div>}
+          {karaoke && syncedLines.length > 0 ? (
+            <>
+              <div className="lyrics" style={{ maxHeight: 260 }}>
+                {syncedLines.map((l, i) => {
+                  const words = l.text.split(/\s+/).filter(Boolean);
+                  return (
+                    <div
+                      key={i}
+                      className={i === activeIdx ? "karaoke-line active" : "karaoke-line"}
+                    >
+                      {i === activeIdx
+                        ? words.map((w, wi) => (
+                            <span key={wi} className={wi < lit ? "word lit" : "word"}>
+                              {w}{" "}
+                            </span>
+                          ))
+                        : l.text}
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+                Baris aktif mengikuti posisi lagu (playerctl/MPRIS). Pewarnaan
+                kata adalah aproksimasi — durasi baris dibagi jumlah kata.
+                {np ? "" : " Putar lagu dulu supaya baris bergerak."}
+              </p>
+            </>
+          ) : (
+            <div className="lyrics">{lyricText(selected)}</div>
+          )}
         </div>
       )}
     </div>

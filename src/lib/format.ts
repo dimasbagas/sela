@@ -8,6 +8,8 @@ export const HARI = [
   "Sabtu",
 ];
 export const HARI_SINGKAT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+/** Header kalender Senin-dulu (sel grid juga Senin-dulu). */
+export const HARI_SINGKAT_SENIN = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"];
 export const BULAN = [
   "Januari",
   "Februari",

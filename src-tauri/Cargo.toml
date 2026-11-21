@@ -1,6 +1,6 @@
 [package]
 name = "sela-app"
-version = "0.1.0"
+version = "0.3.0"
 description = "Sela — notch interaktif: pil kecil di atas layar berisi musik, kalender, todo, pomodoro, cuaca, kurs, sholat, dan lirik."
 authors = ["irul"]
 edition = "2024"
@@ -23,8 +23,12 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # HTTP client untuk API publik gratis (Open-Meteo, Frankfurter, MyQuran, LRCLIB, Deezer).
-# Tanpa API key. Default features = TLS via OpenSSL di Linux / SChannel di Windows.
-reqwest = "0.12"
+# Tanpa API key. Dipakai rustls (bukan native-tls/OpenSSL): native-tls menggantung
+# (timeout 20 dtk) ke lrclib.net & all.api.radio-browser.info lewat proxy egress
+# MITM di VM ini, sementara rustls + curl + openssl CLI langsung OK (diuji
+# 2026-11-21). rustls-native-roots memakai CA store sistem (+ SSL_CERT_FILE),
+# jadi CA MITM proxy tetap dipercaya; system-proxy tetap aktif (env proxy).
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "charset", "http2", "system-proxy"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { httpJson, mediaControl, type NowPlaying } from "../lib/api";
 import { mmss } from "../lib/format";
 import type { LyricQuery } from "../App";
@@ -12,6 +12,14 @@ interface DeezerTrack {
 }
 interface DeezerResp {
   data: DeezerTrack[];
+}
+interface RadioStation {
+  stationuuid: string;
+  name: string;
+  url_resolved: string;
+  country: string;
+  tags: string;
+  votes: number;
 }
 
 function IconPrev() {
@@ -57,6 +65,51 @@ export default function Musik({
   const [results, setResults] = useState<DeezerTrack[]>([]);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+
+  // Radio Browser
+  const [rq, setRq] = useState("");
+  const [stations, setStations] = useState<RadioStation[]>([]);
+  const [radioLoading, setRadioLoading] = useState(false);
+  const [radioErr, setRadioErr] = useState("");
+  const [playingStation, setPlayingStation] = useState<RadioStation | null>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+
+  async function searchRadio(e?: React.FormEvent) {
+    e?.preventDefault();
+    const query = rq.trim();
+    if (!query) return;
+    setRadioLoading(true);
+    setRadioErr("");
+    try {
+      const data = await httpJson<RadioStation[]>(
+        `https://all.api.radio-browser.info/json/stations/search?name=${encodeURIComponent(query)}&limit=8&order=votes&reverse=true`,
+      );
+      const list = (data ?? []).filter((s) => s.url_resolved);
+      setStations(list);
+      if (list.length === 0) setRadioErr("Tidak ada stasiun radio untuk pencarian itu.");
+    } catch {
+      setRadioErr("Tidak bisa terhubung ke Radio Browser — periksa koneksi internetmu.");
+    } finally {
+      setRadioLoading(false);
+    }
+  }
+
+  function playStation(s: RadioStation) {
+    setPlayingStation(s);
+    const audio = audioRef.current;
+    if (audio) {
+      audio.src = s.url_resolved;
+      void audio.play().catch(() => {
+        setRadioErr(`Tidak bisa memutar stream “${s.name}”.`);
+      });
+    }
+  }
+
+  function stopStation() {
+    const audio = audioRef.current;
+    if (audio) audio.pause();
+    setPlayingStation(null);
+  }
 
   async function search(e?: React.FormEvent) {
     e?.preventDefault();
@@ -180,6 +233,71 @@ export default function Musik({
               onClick={() => onLyrics({ track: t.title, artist: t.artist.name })}
             >
               Lirik
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="divider" />
+      <h2 style={{ fontSize: 17 }}>Radio</h2>
+      <p className="sub">
+        Stasiun radio internet dari Radio Browser (gratis, tanpa kunci).
+      </p>
+      <audio ref={audioRef} preload="none" />
+      {playingStation && (
+        <div className="card">
+          <div className="row">
+            <div className="grow">
+              <div className="card-title">▶ {playingStation.name}</div>
+              <div className="list-sub">
+                {playingStation.country}
+                {playingStation.tags ? ` · ${playingStation.tags}` : ""}
+              </div>
+            </div>
+            <button className="btn-ghost btn-mini" onClick={stopStation}>
+              Berhenti
+            </button>
+          </div>
+        </div>
+      )}
+      <form className="row" onSubmit={searchRadio}>
+        <input
+          className="grow"
+          type="text"
+          placeholder="Cari stasiun radio… (mis. Prambors)"
+          value={rq}
+          onChange={(e) => setRq(e.target.value)}
+        />
+        <button className="btn" type="submit" disabled={radioLoading}>
+          {radioLoading ? "Mencari…" : "Cari"}
+        </button>
+      </form>
+      {radioErr && (
+        <div className="err" style={{ marginTop: 10 }}>
+          {radioErr}
+        </div>
+      )}
+      <div style={{ marginTop: 6 }}>
+        {stations.map((s) => (
+          <div className="list-row" key={s.stationuuid}>
+            <div className="list-main">
+              <div className="list-title">{s.name}</div>
+              <div className="list-sub">
+                {s.country}
+                {s.tags ? ` · ${s.tags}` : ""} · {s.votes} suara
+              </div>
+            </div>
+            <button
+              className="btn-ghost btn-mini"
+              onClick={() =>
+                playingStation?.stationuuid === s.stationuuid
+                  ? stopStation()
+                  : playStation(s)
+              }
+            >
+              {playingStation?.stationuuid === s.stationuuid
+                ? "Berhenti"
+                : "Putar"}
             </button>
           </div>
         ))}
